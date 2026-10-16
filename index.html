@@ -1,1 +1,237 @@
+from pathlib import Path
 
+html = r'''<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Διαδραστική πρόγνωση καιρού Μαγνησίας με χάρτες WRF MAGNESIA.">
+  <title>WRF MAGNESIA — Διαδραστική Πρόγνωση</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b121a;
+      --panel: #15212d;
+      --panel2: #202e3b;
+      --line: #354758;
+      --text: #edf4fa;
+      --muted: #b4c4d2;
+      --accent: #1687dc;
+      --accent2: #0c6db5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.55;
+    }
+    .page { max-width: 1180px; margin: 0 auto; padding: 18px; }
+    header { padding: 8px 0 18px; }
+    .eyebrow { color: #71c8ff; font-size: .88rem; letter-spacing: .08em; text-transform: uppercase; }
+    h1 { margin: 4px 0; font-size: clamp(1.7rem, 4vw, 2.6rem); line-height: 1.15; }
+    .subtitle { color: var(--muted); margin: 8px 0 0; }
+    .status {
+      display: inline-flex; align-items: center; gap: 8px; margin-top: 14px;
+      border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px;
+      color: var(--muted); font-size: .85rem;
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #e8ad45; }
+    .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 8px 0 14px; }
+    button, input { font: inherit; }
+    .tab, .navbtn {
+      cursor: pointer; border: 1px solid var(--line); border-radius: 8px;
+      color: var(--text); background: #253544; padding: 11px 12px;
+      transition: background .15s ease, border-color .15s ease;
+    }
+    .tab:hover, .navbtn:hover { background: #31485b; }
+    .tab[aria-pressed="true"] { background: var(--accent2); border-color: #55b5ff; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .panel-head { padding: 16px; background: var(--panel2); border-bottom: 1px solid var(--line); }
+    .panel-head h2 { margin: 0; font-size: 1.3rem; text-align: center; }
+    .valid { color: var(--muted); text-align: center; margin: 5px 0 12px; }
+    .timeline { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; }
+    .timeline input { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    .navbtn { min-width: 46px; padding: 8px 12px; font-weight: 700; }
+    .navbtn:disabled { opacity: .4; cursor: not-allowed; }
+    .map-wrap { padding: 14px; }
+    .map-placeholder {
+      min-height: 280px; border: 1px dashed #50677a; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      padding: 24px; color: var(--muted); background:
+      radial-gradient(ellipse at 50% 45%, #203d50 0, #142532 62%, #101b25 100%);
+    }
+    .map-placeholder strong { display: block; color: var(--text); font-size: 1.1rem; margin: 8px 0; }
+    .map-placeholder .symbol { font-size: 2.8rem; }
+    #mapImage { display: none; width: 100%; height: auto; border-radius: 8px; background: #0c1720; }
+    .caption { color: var(--muted); font-size: .86rem; margin: 10px 2px 0; text-align: center; }
+    .forecast { margin-top: 16px; padding: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+    .forecast h2 { margin: 0 0 8px; font-size: 1.3rem; }
+    .forecast p { margin: 0; }
+    .forecast-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin-top: 14px; }
+    .metric { padding: 12px; background: #1e2c39; border: 1px solid var(--line); border-radius: 9px; }
+    .metric .label { color: var(--muted); font-size: .88rem; }
+    .metric .value { font-weight: 700; font-size: 1.1rem; margin-top: 4px; }
+    footer { color: #91a5b6; font-size: .8rem; padding: 18px 2px 4px; }
+    @media (max-width: 620px) {
+      .page { padding: 12px; }
+      .tabs { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .timeline { grid-template-columns: auto 1fr auto; gap: 7px; }
+      .navbtn { padding: 8px 10px; }
+      .map-placeholder { min-height: 220px; padding: 16px; }
+      .forecast-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div class="eyebrow">Μετεωρολογικό μοντέλο WRF</div>
+      <h1>WRF MAGNESIA</h1>
+      <p class="subtitle">Διαδραστική πρόγνωση καιρού Μαγνησίας</p>
+      <div class="status"><span class="status-dot"></span><span id="statusText">Αναμονή σύνδεσης πραγματικών χαρτών</span></div>
+    </header>
+
+    <nav class="tabs" aria-label="Μετεωρολογικές παράμετροι">
+      <button class="tab" type="button" data-kind="rain" aria-pressed="true">Υετός</button>
+      <button class="tab" type="button" data-kind="temp" aria-pressed="false">Θερμοκρασία</button>
+      <button class="tab" type="button" data-kind="wind" aria-pressed="false">Άνεμος</button>
+      <button class="tab" type="button" data-kind="cloud" aria-pressed="false">Νεφώσεις</button>
+    </nav>
+
+    <section class="panel" aria-labelledby="mapTitle">
+      <div class="panel-head">
+        <h2 id="mapTitle">Υετός</h2>
+        <div id="validTime" class="valid">Δεν έχουν συνδεθεί ακόμη χάρτες</div>
+        <div class="timeline">
+          <button class="navbtn" id="prevBtn" type="button" aria-label="Προηγούμενη ώρα" disabled>◀</button>
+          <input id="hourSlider" type="range" min="0" max="0" value="0" step="1" aria-label="Επιλογή ώρας πρόγνωσης" disabled>
+          <button class="navbtn" id="nextBtn" type="button" aria-label="Επόμενη ώρα" disabled>▶</button>
+        </div>
+      </div>
+      <div class="map-wrap">
+        <div id="mapPlaceholder" class="map-placeholder">
+          <div>
+            <div class="symbol">🌦️</div>
+            <strong>Οι χάρτες WRF θα εμφανίζονται εδώ</strong>
+            <div>Στο επόμενο βήμα θα συνδέσουμε τα αρχεία εικόνων που παράγονται από τον WRF MAGNESIA server.</div>
+          </div>
+        </div>
+        <img id="mapImage" alt="Χάρτης πρόγνωσης WRF για τη Μαγνησία">
+        <p id="mapCaption" class="caption">Δοκιμαστική σελίδα — δεν εμφανίζονται ακόμη πραγματικά προγνωστικά δεδομένα.</p>
+      </div>
+    </section>
+
+    <section class="forecast">
+      <h2>Πρόγνωση Μαγνησίας</h2>
+      <p id="forecastText">Εδώ θα εμφανίζεται το κείμενο της πρόγνωσης, με βάση τα δεδομένα του WRF και όχι ενδεικτικές ή επινοημένες θερμοκρασίες.</p>
+      <div class="forecast-grid">
+        <div class="metric"><div class="label">Πεδινά — ελάχιστη / μέγιστη</div><div class="value" id="lowlandTemp">Θα συνδεθεί με τα δεδομένα WRF</div></div>
+        <div class="metric"><div class="label">Ορεινά — ελάχιστη / μέγιστη</div><div class="value" id="mountainTemp">Θα συνδεθεί με τα δεδομένα WRF</div></div>
+      </div>
+    </section>
+
+    <footer>
+      WRF MAGNESIA · Πειραματική έκδοση. Οι χάρτες και οι τιμές θα εμφανίζονται μόλις συνδεθούν τα πραγματικά αρχεία πρόγνωσης.
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+      const titles = {
+        rain: "Υετός",
+        temp: "Θερμοκρασία",
+        wind: "Άνεμος",
+        cloud: "Νεφώσεις"
+      };
+      const tabs = Array.from(document.querySelectorAll(".tab"));
+      const title = document.getElementById("mapTitle");
+      const validTime = document.getElementById("validTime");
+      const slider = document.getElementById("hourSlider");
+      const prev = document.getElementById("prevBtn");
+      const next = document.getElementById("nextBtn");
+      const placeholder = document.getElementById("mapPlaceholder");
+      const image = document.getElementById("mapImage");
+      const caption = document.getElementById("mapCaption");
+      const statusText = document.getElementById("statusText");
+
+      // Θα συμπληρωθεί με δημόσια URLs των πραγματικών εικόνων WRF.
+      // Παράδειγμα δομής:
+      // const maps = { rain: [{hour: 0, url: "maps/rain_fh00.png", label: "..."}] };
+      const maps = { rain: [], temp: [], wind: [], cloud: [] };
+
+      let activeKind = "rain";
+      let activeIndex = 0;
+
+      function update() {
+        const list = maps[activeKind] || [];
+        const hasMaps = list.length > 0;
+        title.textContent = titles[activeKind];
+
+        tabs.forEach(function (tab) {
+          tab.setAttribute("aria-pressed", String(tab.dataset.kind === activeKind));
+        });
+
+        slider.disabled = !hasMaps;
+        prev.disabled = !hasMaps || activeIndex <= 0;
+        next.disabled = !hasMaps || activeIndex >= list.length - 1;
+        slider.max = String(Math.max(0, list.length - 1));
+        slider.value = String(Math.min(activeIndex, Math.max(0, list.length - 1)));
+
+        if (!hasMaps) {
+          image.style.display = "none";
+          image.removeAttribute("src");
+          placeholder.style.display = "flex";
+          validTime.textContent = "Δεν έχουν συνδεθεί ακόμη χάρτες";
+          caption.textContent = "Η ενότητα είναι έτοιμη. Θα εμφανιστούν εδώ οι πραγματικές εικόνες του WRF.";
+          statusText.textContent = "Αναμονή σύνδεσης πραγματικών χαρτών";
+          return;
+        }
+
+        const item = list[activeIndex];
+        image.onload = function () {
+          image.style.display = "block";
+          placeholder.style.display = "none";
+          statusText.textContent = "Χάρτες διαθέσιμοι";
+        };
+        image.onerror = function () {
+          image.style.display = "none";
+          placeholder.style.display = "flex";
+          statusText.textContent = "Δεν φορτώθηκε η εικόνα — έλεγξε τη διεύθυνση";
+        };
+        image.alt = titles[activeKind] + " — " + (item.label || "χάρτης WRF");
+        image.src = item.url;
+        validTime.textContent = item.valid || item.label || ("Προγνωστική ώρα +" + item.hour + " h");
+        caption.textContent = item.caption || "Πηγή: WRF MAGNESIA";
+      }
+
+      tabs.forEach(function (tab) {
+        tab.addEventListener("click", function () {
+          activeKind = tab.dataset.kind;
+          activeIndex = 0;
+          update();
+        });
+      });
+      prev.addEventListener("click", function () {
+        activeIndex = Math.max(0, activeIndex - 1);
+        update();
+      });
+      next.addEventListener("click", function () {
+        activeIndex = Math.min((maps[activeKind] || []).length - 1, activeIndex + 1);
+        update();
+      });
+      slider.addEventListener("input", function () {
+        activeIndex = Number(slider.value);
+        update();
+      });
+      update();
+    })();
+  </script>
+</body>
+</html>
+'''
+path = "/mnt/data/index.html"
+Path(path).write_text(html, encoding="utf-8")
+print(f"Created {path} ({len(html)} chars)")
